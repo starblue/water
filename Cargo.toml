@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 gpio = []
+term_logger = []
 
 [dependencies]
 time = { version = "0.3.5", features = ["local-offset", "formatting"] }

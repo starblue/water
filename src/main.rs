@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use std::fs::File;
+use std::fs::OpenOptions;
 use std::thread;
 
 use time::ext::NumericalDuration;
@@ -78,18 +78,25 @@ const PUMP2: u32 = 15; // P8 15
 const PUMP3: u32 = 14; // P8 16
 
 fn main() -> Result<(), gpio_cdev::Error> {
-    let term_logger = TermLogger::new(
-        LevelFilter::Info,
-        Config::default(),
-        TerminalMode::Mixed,
-        ColorChoice::Never,
-    );
-    let file_logger = WriteLogger::new(
-        LevelFilter::Info,
-        Config::default(),
-        File::create("water.log").unwrap(),
-    );
-    CombinedLogger::init(vec![term_logger, file_logger]).unwrap();
+    let log_file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("water.log")
+        .unwrap();
+    let file_logger = WriteLogger::new(LevelFilter::Info, Config::default(), log_file);
+    if cfg!(feature = "term_logger") {
+        let term_logger = TermLogger::new(
+            LevelFilter::Info,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Never,
+        );
+        CombinedLogger::init(vec![file_logger, term_logger]).unwrap();
+    } else {
+        CombinedLogger::init(vec![file_logger]).unwrap();
+    }
+
+    info!("starting");
 
     let mut chip = Chip::new("/dev/gpiochip1")?;
 
