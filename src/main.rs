@@ -107,8 +107,12 @@ fn main() -> Result<(), gpio_cdev::Error> {
     // Run each pump for 6s to pump ca 20mL.
     let pulse_duration = Duration::from_millis(6_000);
 
-    let format =
-        format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]").unwrap();
+    let format = format_description::parse(
+        "[year]-[month]-[day] \
+         [hour]:[minute]:[second] \
+         [offset_hour sign:mandatory]:[offset_minute]",
+    )
+    .unwrap();
 
     let watering_time = Time::from_hms(7, 0, 0).unwrap();
 
