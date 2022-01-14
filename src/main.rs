@@ -98,13 +98,13 @@ fn main() -> Result<(), gpio_cdev::Error> {
     let pin2 = Pin::new(&mut chip, PUMP2, "pump2")?;
     let pin3 = Pin::new(&mut chip, PUMP3, "pump3")?;
 
-    // Check date and time once per minute.
-    let sleep_duration = Duration::from_millis(60_000);
+    // Check date and time once per second.
+    let sleep_duration = Duration::from_millis(1_000);
 
     // Make a short pause between running successive pumps.
     let pause_duration = Duration::from_millis(1_000);
 
-    // Run each pump for 6s to pump ca 20mL.
+    // Run each pump for 6s to pump about 20mL.
     let pulse_duration = Duration::from_millis(6_000);
 
     let format = format_description::parse(
