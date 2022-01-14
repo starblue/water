@@ -118,7 +118,7 @@ fn main() -> Result<(), gpio_cdev::Error> {
 
     let now = OffsetDateTime::now_local().unwrap();
     let mut next_date_time = now.replace_time(watering_time);
-    if now > next_date_time {
+    if next_date_time <= now {
         next_date_time += 1.days();
     }
     loop {
