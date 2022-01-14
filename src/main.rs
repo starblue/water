@@ -101,7 +101,7 @@ fn main() -> Result<(), gpio_cdev::Error> {
     // Check date and time once per minute.
     let sleep_duration = Duration::from_millis(60_000);
 
-    // Make a short pause between runing successive pumps.
+    // Make a short pause between running successive pumps.
     let pause_duration = Duration::from_millis(1_000);
 
     // Run each pump for 6s to pump ca 20mL.
