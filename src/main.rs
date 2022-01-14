@@ -114,7 +114,7 @@ fn main() -> Result<(), gpio_cdev::Error> {
     )
     .unwrap();
 
-    let watering_time = Time::from_hms(7, 0, 0).unwrap();
+    let watering_time = Time::from_hms(7, 30, 0).unwrap();
 
     let now = OffsetDateTime::now_local().unwrap();
     let mut next_date_time = now.replace_time(watering_time);
