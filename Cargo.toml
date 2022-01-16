@@ -8,7 +8,9 @@ gpio = []
 term_logger = []
 
 [dependencies]
-time = { version = "0.3.5", features = ["local-offset", "formatting"] }
+time = { version = "0.3.5", features = ["local-offset", "formatting", "parsing"] }
 gpio-cdev = "0.5.1"
 log = "0.4.14"
 simplelog = "0.11.2"
+serde = { version = "1.0.133", features = ["derive"] }
+toml = "0.5.8"

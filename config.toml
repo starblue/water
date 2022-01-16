@@ -1,0 +1,30 @@
+[timing]
+daily_start_time = 07:30:00
+
+[pumps.pump0]
+connector = "P8 11"
+device = "/dev/gpiochip1"
+offset = 13
+ml_per_s = 3.333
+ml_per_day = 20.0
+
+[pumps.pump1]
+connector = "P8 12"
+device = "/dev/gpiochip1"
+offset = 12
+ml_per_s = 3.333
+ml_per_day = 20.0
+
+[pumps.pump2]
+connector = "P8 15"
+device = "/dev/gpiochip1"
+offset = 15
+ml_per_s = 3.333
+ml_per_day = 20.0
+
+[pumps.pump3]
+connector = "P8 16"
+device = "/dev/gpiochip1"
+offset = 14
+ml_per_s = 3.333
+ml_per_day = 20.0
