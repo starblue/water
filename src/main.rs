@@ -2,6 +2,7 @@ use core::fmt;
 use core::time::Duration;
 
 use std::error;
+use std::error::Error;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Read;
@@ -27,8 +28,12 @@ use simplelog::TermLogger;
 use simplelog::TerminalMode;
 use simplelog::WriteLogger;
 
+use log::error;
 use log::info;
 use log::warn;
+
+use clap::Parser;
+use clap::Subcommand;
 
 mod config;
 
@@ -68,15 +73,14 @@ impl Pin {
             offset,
         })
     }
-}
-impl Pin {
     fn set_value(&self, value: u8) -> Result<(), gpio_cdev::Error> {
         info!("setting pin {} to {}", self.name, value);
         self.set_value_raw(value)
     }
     #[cfg(feature = "gpio")]
     fn set_value_raw(&self, value: u8) -> Result<(), gpio_cdev::Error> {
-        self.handle.set_value(value)
+        self.handle.set_value(value)?;
+        Ok(())
     }
     #[cfg(not(feature = "gpio"))]
     fn set_value_raw(&self, _value: u8) -> Result<(), gpio_cdev::Error> {
@@ -125,19 +129,27 @@ impl Pump {
             ml_per_day,
         })
     }
-    fn water(&self) -> Result<(), Box<dyn error::Error>> {
+    fn pump(&self, duration: Duration) -> Result<(), Box<dyn error::Error>> {
         let name = &self.name;
-        let seconds = self.ml_per_day / self.ml_per_s;
-        if 1.0 <= seconds && seconds <= 30.0 {
+        let secs = duration.as_secs_f64();
+        info!("{name}: pumping for {secs:.1}s");
+        self.pin.create_pulse(duration)?;
+        Ok(())
+    }
+    fn pump_for_secs(&self, secs: f64) -> Result<(), Box<dyn error::Error>> {
+        let name = &self.name;
+        if 0.0 <= secs && secs <= 30.0 {
             // TODO use checked conversion when stabilized
-            let duration = Duration::from_secs_f64(seconds);
-            info!("{name}: running for {seconds:.1}s");
-            self.pin.create_pulse(duration)?;
+            let duration = Duration::from_secs_f64(secs);
+            self.pump(duration)?;
         } else {
-            warn!(
-                "{name}: watering duration {seconds:.1}s out of range (min 1s, max 30s), doing nothing",
-            );
+            warn!("{name}: pump duration {secs:.1}s out of range (min 0s, max 30s), doing nothing",);
         }
+        Ok(())
+    }
+    fn water(&self) -> Result<(), Box<dyn error::Error>> {
+        let secs = self.ml_per_day / self.ml_per_s;
+        self.pump_for_secs(secs)?;
         Ok(())
     }
 }
@@ -151,7 +163,94 @@ impl fmt::Display for Pump {
     }
 }
 
+fn run(pumps: &[Pump], watering_time: &Time) -> Result<(), Box<dyn error::Error>> {
+    // Check date and time once per second.
+    let sleep_duration = Duration::from_millis(1_000);
+
+    // Make a short pause between running successive pumps.
+    let pause_duration = Duration::from_millis(1_000);
+
+    let format = format_description::parse(
+        "[year]-[month]-[day] \
+         [hour]:[minute]:[second] \
+         [offset_hour sign:mandatory]:[offset_minute]",
+    )?;
+
+    let now = OffsetDateTime::now_local()?;
+    let mut next_date_time = now.replace_time(watering_time.clone());
+    if next_date_time <= now {
+        next_date_time += 1.days();
+    }
+    loop {
+        info!("waiting for {}", next_date_time.format(&format)?);
+        while OffsetDateTime::now_utc() < next_date_time {
+            thread::sleep(sleep_duration);
+        }
+        next_date_time += 1.days();
+
+        info!(
+            "starting watering at {}",
+            OffsetDateTime::now_utc().format(&format)?
+        );
+        for pump in pumps {
+            if let Err(err) = pump.water() {
+                warn!("pumping failed with error {err:?}");
+            }
+            thread::sleep(pause_duration);
+        }
+        info!(
+            "finished watering at {}",
+            OffsetDateTime::now_utc().format(&format)?
+        );
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PumpNotFoundError {
+    pump_name: String,
+}
+impl Error for PumpNotFoundError {}
+impl fmt::Display for PumpNotFoundError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "pump with name {} not found", self.pump_name)
+    }
+}
+
+fn test(test_args: &TestArgs, pumps: &[Pump]) -> Result<(), Box<dyn error::Error>> {
+    let pump_name = &test_args.pump;
+    if let Some(pump) = pumps.iter().find(|pump| &pump.name == pump_name) {
+        let secs = test_args.secs.unwrap_or(10.0);
+        info!("testing pump {pump_name} for {secs}s");
+        pump.pump_for_secs(secs)
+    } else {
+        error!("there is no pump with name {pump_name}");
+        let pump_name = pump_name.to_string();
+        Err(Box::new(PumpNotFoundError { pump_name }))
+    }
+}
+
+#[derive(Debug, Parser)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    #[clap(subcommand)]
+    command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    Run,
+    Test(TestArgs),
+}
+
+#[derive(Parser, Debug)]
+struct TestArgs {
+    pump: String,
+    secs: Option<f64>,
+}
+
 fn main() -> Result<(), Box<dyn error::Error>> {
+    let args = Args::parse();
+
     let mut file = File::open("config.toml")?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
@@ -180,6 +279,10 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     info!("starting");
 
+    let config_time_format = format_description::parse("[hour]:[minute]:[second]")?;
+    let time_string = config.timing.daily_start_time.to_string();
+    let watering_time = Time::parse(&time_string, &config_time_format)?;
+
     let mut pumps = Vec::new();
     for (name, pump_config) in config.pumps {
         let config::Pump {
@@ -190,51 +293,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             ml_per_day,
         } = pump_config;
         let pump = Pump::new(&name, &connector, &device, offset, ml_per_s, ml_per_day)?;
-        info!("adding {pump}");
+        info!("configuring {pump}");
         pumps.push(pump);
     }
 
-    // Check date and time once per second.
-    let sleep_duration = Duration::from_millis(1_000);
-
-    // Make a short pause between running successive pumps.
-    let pause_duration = Duration::from_millis(1_000);
-
-    let format = format_description::parse(
-        "[year]-[month]-[day] \
-         [hour]:[minute]:[second] \
-         [offset_hour sign:mandatory]:[offset_minute]",
-    )?;
-
-    let config_time_format = format_description::parse("[hour]:[minute]:[second]")?;
-    let time_string = config.timing.daily_start_time.to_string();
-    let watering_time = Time::parse(&time_string, &config_time_format)?;
-
-    let now = OffsetDateTime::now_local()?;
-    let mut next_date_time = now.replace_time(watering_time);
-    if next_date_time <= now {
-        next_date_time += 1.days();
-    }
-    loop {
-        info!("waiting for {}", next_date_time.format(&format)?);
-        while OffsetDateTime::now_utc() < next_date_time {
-            thread::sleep(sleep_duration);
-        }
-        next_date_time += 1.days();
-
-        info!(
-            "starting watering at {}",
-            OffsetDateTime::now_utc().format(&format)?
-        );
-        for pump in &pumps {
-            if let Err(err) = pump.water() {
-                warn!("pumping failed with error {err:?}");
-            }
-            thread::sleep(pause_duration);
-        }
-        info!(
-            "finished watering at {}",
-            OffsetDateTime::now_utc().format(&format)?
-        );
+    match args.command {
+        Command::Run => run(&pumps, &watering_time),
+        Command::Test(test_args) => test(&test_args, &pumps),
     }
 }
