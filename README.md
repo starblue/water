@@ -5,11 +5,11 @@
 ## Applications
 
 Water small indoor plants using some Linux board with GPIO pins.
-I use a Beaglebone black, but a Raspberry should be usable as well
+I use a Beaglebone Black, but a Raspberry should be usable as well
 with the same software and a different GPIO configuration.
 
-The GPIO pins turn on small water pumpsfor a few seconds every day
-to pump some water into the pots.
+The GPIO pins turn on small water pumps for a few seconds every day
+to pump some small amount of water into the pots.
 The pumps are driven from a 12V source via a ULN2003A driver.
 
 ## License
