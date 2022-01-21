@@ -28,6 +28,7 @@ use simplelog::TermLogger;
 use simplelog::TerminalMode;
 use simplelog::WriteLogger;
 
+use log::debug;
 use log::error;
 use log::info;
 use log::warn;
@@ -74,7 +75,7 @@ impl Pin {
         })
     }
     fn set_value(&self, value: u8) -> Result<(), gpio_cdev::Error> {
-        info!("setting pin {} to {}", self.name, value);
+        debug!("setting pin {} to {}", self.name, value);
         self.set_value_raw(value)
     }
     #[cfg(feature = "gpio")]
@@ -130,9 +131,6 @@ impl Pump {
         })
     }
     fn pump(&self, duration: Duration) -> Result<(), Box<dyn error::Error>> {
-        let name = &self.name;
-        let secs = duration.as_secs_f64();
-        info!("{name}: pumping for {secs:.1}s");
         self.pin.create_pulse(duration)?;
         Ok(())
     }
@@ -148,7 +146,11 @@ impl Pump {
         Ok(())
     }
     fn water(&self) -> Result<(), Box<dyn error::Error>> {
-        let secs = self.ml_per_day / self.ml_per_s;
+        let name = &self.name;
+        let ml = self.ml_per_day;
+        let ml_per_s = self.ml_per_s;
+        let secs = ml / ml_per_s;
+        info!("{name}: pumping {ml:.0}mL in {secs:.1}s at {ml_per_s:.1}mL/s");
         self.pump_for_secs(secs)?;
         Ok(())
     }
@@ -263,11 +265,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         .open("water.log")?;
     let log_config = ConfigBuilder::new()
         .set_time_format_str("%F %T%.3f")
+        .set_thread_level(LevelFilter::Off)
         .build();
     let file_logger = WriteLogger::new(LevelFilter::Info, log_config.clone(), log_file);
     if cfg!(feature = "term_logger") {
         let term_logger = TermLogger::new(
-            LevelFilter::Info,
+            LevelFilter::Debug,
             log_config,
             TerminalMode::Mixed,
             ColorChoice::Never,
