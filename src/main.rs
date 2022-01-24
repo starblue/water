@@ -240,6 +240,11 @@ struct Args {
     ///
     /// Default is `config.toml` in the current directory.
     config_file: Option<String>,
+    #[clap(long)]
+    /// Log file.
+    ///
+    /// Default is `water.log` in the current directory.
+    log_file: Option<String>,
     #[clap(subcommand)]
     command: Command,
 }
@@ -257,6 +262,7 @@ struct TestArgs {
 }
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.toml";
+const DEFAULT_LOG_FILE_NAME: &str = "water.log";
 
 fn main() -> Result<(), Box<dyn error::Error>> {
     let args = Args::parse();
@@ -270,10 +276,11 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let config: config::Config = toml::from_str(&contents)?;
 
+    let log_file_name = args.log_file.unwrap_or(DEFAULT_LOG_FILE_NAME.to_string());
     let log_file = OpenOptions::new()
         .append(true)
         .create(true)
-        .open("water.log")?;
+        .open(log_file_name)?;
     let log_config = ConfigBuilder::new()
         .set_time_format_str("%F %T%.3f")
         .set_thread_level(LevelFilter::Off)
