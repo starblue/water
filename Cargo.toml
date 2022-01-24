@@ -9,7 +9,6 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [features]
-gpio = []
 term_logger = []
 
 [dependencies]

@@ -7,6 +7,7 @@ device = "/dev/gpiochip1"
 offset = 13
 ml_per_s = 2.9
 ml_per_day = 20.0
+enable = false
 
 [pumps.pump1]
 connector = "P8 12"
@@ -14,6 +15,7 @@ device = "/dev/gpiochip1"
 offset = 12
 ml_per_s = 4.0
 ml_per_day = 30.0
+enable = false
 
 [pumps.pump2]
 connector = "P8 15"
@@ -21,6 +23,7 @@ device = "/dev/gpiochip1"
 offset = 15
 ml_per_s = 4.1
 ml_per_day = 30.0
+enable = false
 
 [pumps.pump3]
 connector = "P8 16"
@@ -28,3 +31,4 @@ device = "/dev/gpiochip1"
 offset = 14
 ml_per_s = 3.2
 ml_per_day = 30.0
+enable = false

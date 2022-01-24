@@ -13,11 +13,8 @@ use time::format_description;
 use time::OffsetDateTime;
 use time::Time;
 
-#[cfg(feature = "gpio")]
 use gpio_cdev::Chip;
-#[cfg(feature = "gpio")]
 use gpio_cdev::LineHandle;
-#[cfg(feature = "gpio")]
 use gpio_cdev::LineRequestFlags;
 
 use simplelog::ColorChoice;
@@ -38,7 +35,6 @@ use clap::Subcommand;
 
 mod config;
 
-#[cfg(feature = "gpio")]
 const CONSUMER: &str = "water";
 
 #[derive(Debug)]
@@ -50,15 +46,19 @@ struct Pin {
     /// Pin offset within the device.
     offset: u32,
     /// The handle for controlling the pin.
-    #[cfg(feature = "gpio")]
-    handle: LineHandle,
+    handle: Option<LineHandle>,
 }
 impl Pin {
-    #[cfg(feature = "gpio")]
-    fn new(name: &str, device: &str, offset: u32) -> Result<Pin, gpio_cdev::Error> {
-        let mut chip = Chip::new(device)?;
-        let line = chip.get_line(offset)?;
-        let handle = line.request(LineRequestFlags::OUTPUT, 0, CONSUMER)?;
+    fn new(name: &str, enable: bool, device: &str, offset: u32) -> Result<Pin, gpio_cdev::Error> {
+        let handle = {
+            if enable {
+                let mut chip = Chip::new(device)?;
+                let line = chip.get_line(offset)?;
+                Some(line.request(LineRequestFlags::OUTPUT, 0, CONSUMER)?)
+            } else {
+                None
+            }
+        };
         Ok(Pin {
             name: name.to_string(),
             device: device.to_string(),
@@ -66,25 +66,14 @@ impl Pin {
             handle,
         })
     }
-    #[cfg(not(feature = "gpio"))]
-    fn new(name: &str, device: &str, offset: u32) -> Result<Pin, gpio_cdev::Error> {
-        Ok(Pin {
-            name: name.to_string(),
-            device: device.to_string(),
-            offset,
-        })
-    }
     fn set_value(&self, value: u8) -> Result<(), gpio_cdev::Error> {
         debug!("setting pin {} to {}", self.name, value);
         self.set_value_raw(value)
     }
-    #[cfg(feature = "gpio")]
     fn set_value_raw(&self, value: u8) -> Result<(), gpio_cdev::Error> {
-        self.handle.set_value(value)?;
-        Ok(())
-    }
-    #[cfg(not(feature = "gpio"))]
-    fn set_value_raw(&self, _value: u8) -> Result<(), gpio_cdev::Error> {
+        if let Some(handle) = &self.handle {
+            handle.set_value(value)?;
+        }
         Ok(())
     }
     fn create_pulse(&self, duration: Duration) -> Result<(), gpio_cdev::Error> {
@@ -92,6 +81,9 @@ impl Pin {
         thread::sleep(duration);
         self.set_value(0)?;
         Ok(())
+    }
+    fn is_enabled(&self) -> bool {
+        !self.handle.is_none()
     }
 }
 impl fmt::Display for Pin {
@@ -117,6 +109,7 @@ struct Pump {
 impl Pump {
     fn new(
         name: &str,
+        enable: bool,
         connector: &str,
         device: &str,
         offset: u32,
@@ -125,7 +118,7 @@ impl Pump {
     ) -> Result<Pump, Box<dyn error::Error>> {
         Ok(Pump {
             name: name.to_string(),
-            pin: Pin::new(connector, device, offset)?,
+            pin: Pin::new(connector, enable, device, offset)?,
             ml_per_s,
             ml_per_day,
         })
@@ -159,8 +152,16 @@ impl fmt::Display for Pump {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "pump {}, {:.1} mL/day at {:.1} mL/s on {}",
-            self.name, self.ml_per_day, self.ml_per_s, self.pin
+            "pump {} ({}), {:.1} mL/day at {:.1} mL/s on {}",
+            self.name,
+            if self.pin.is_enabled() {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            self.ml_per_day,
+            self.ml_per_s,
+            self.pin
         )
     }
 }
@@ -288,15 +289,16 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let mut pumps = Vec::new();
     for (name, pump_config) in config.pumps {
-        let config::Pump {
-            connector,
-            device,
-            offset,
-            ml_per_s,
-            ml_per_day,
-        } = pump_config;
-        let pump = Pump::new(&name, &connector, &device, offset, ml_per_s, ml_per_day)?;
-        info!("configuring {pump}");
+        let pump = Pump::new(
+            &name,
+            pump_config.enable,
+            &pump_config.connector,
+            &pump_config.device,
+            pump_config.offset,
+            pump_config.ml_per_s,
+            pump_config.ml_per_day,
+        )?;
+        info!("configured {pump}");
         pumps.push(pump);
     }
 

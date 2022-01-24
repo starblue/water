@@ -37,4 +37,6 @@ pub struct Pump {
     pub ml_per_s: f64,
     /// Amount of water required per day.
     pub ml_per_day: f64,
+    /// If true enable the pump
+    pub enable: bool,
 }
