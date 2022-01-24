@@ -235,6 +235,11 @@ fn test(test_args: &TestArgs, pumps: &[Pump]) -> Result<(), Box<dyn error::Error
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
+    #[clap(short, long)]
+    /// Configuration file.
+    ///
+    /// Default is `config.toml` in the current directory.
+    config_file: Option<String>,
     #[clap(subcommand)]
     command: Command,
 }
@@ -251,10 +256,15 @@ struct TestArgs {
     secs: Option<f64>,
 }
 
+const DEFAULT_CONFIG_FILE_NAME: &str = "config.toml";
+
 fn main() -> Result<(), Box<dyn error::Error>> {
     let args = Args::parse();
 
-    let mut file = File::open("config.toml")?;
+    let config_file_name = args
+        .config_file
+        .unwrap_or(DEFAULT_CONFIG_FILE_NAME.to_string());
+    let mut file = File::open(config_file_name)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
 
