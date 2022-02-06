@@ -259,6 +259,14 @@ enum Command {
     Run,
     Test(TestArgs),
 }
+impl Command {
+    fn mode_name(&self) -> &'static str {
+        match self {
+            Command::Run => "run",
+            Command::Test(_) => "test",
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 struct TestArgs {
@@ -300,7 +308,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         CombinedLogger::init(vec![file_logger])?;
     }
 
-    info!("starting");
+    info!("starting in {} mode", args.command.mode_name());
 
     let config_time_format = format_description::parse("[hour]:[minute]:[second]")?;
     let time_string = config.timing.daily_start_time.to_string();
