@@ -35,6 +35,11 @@ use clap::Subcommand;
 
 mod config;
 
+const DEFAULT_CONFIG_FILE_NAME: &str = "config.toml";
+const DEFAULT_LOG_FILE_NAME: &str = "water.log";
+/// Run a pump test for one second by default.
+const DEFAULT_TEST_SECS: f64 = 1.0;
+
 const CONSUMER: &str = "water";
 
 #[derive(Debug)]
@@ -222,7 +227,7 @@ impl fmt::Display for PumpNotFoundError {
 fn test(test_args: &TestArgs, pumps: &[Pump]) -> Result<(), Box<dyn error::Error>> {
     let pump_name = &test_args.pump;
     if let Some(pump) = pumps.iter().find(|pump| &pump.name == pump_name) {
-        let secs = test_args.secs.unwrap_or(10.0);
+        let secs = test_args.secs.unwrap_or(DEFAULT_TEST_SECS);
         info!("testing pump {pump_name} for {secs}s");
         pump.pump_for_secs(secs)
     } else {
@@ -260,9 +265,6 @@ struct TestArgs {
     pump: String,
     secs: Option<f64>,
 }
-
-const DEFAULT_CONFIG_FILE_NAME: &str = "config.toml";
-const DEFAULT_LOG_FILE_NAME: &str = "water.log";
 
 fn main() -> Result<(), Box<dyn error::Error>> {
     let args = Args::parse();
