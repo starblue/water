@@ -184,17 +184,16 @@ fn run(pumps: &[Pump], watering_time: &Time) -> Result<(), Box<dyn error::Error>
          [offset_hour sign:mandatory]:[offset_minute]",
     )?;
 
-    let now = OffsetDateTime::now_local()?;
-    let mut next_date_time = now.replace_time(watering_time.clone());
-    if next_date_time <= now {
-        next_date_time += 1.days();
-    }
     loop {
-        info!("waiting for {}", next_date_time.format(&format)?);
-        while OffsetDateTime::now_utc() < next_date_time {
+        let now = OffsetDateTime::now_local()?;
+        let mut watering_date_time = now.replace_time(watering_time.clone());
+        if watering_date_time <= now {
+            watering_date_time += 1.days();
+        }
+        info!("waiting for {}", watering_date_time.format(&format)?);
+        while OffsetDateTime::now_utc() < watering_date_time {
             thread::sleep(sleep_duration);
         }
-        next_date_time += 1.days();
 
         info!(
             "starting watering at {}",
