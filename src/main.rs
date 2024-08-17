@@ -185,7 +185,7 @@ fn run(pumps: &[Pump], watering_time: &Time) -> Result<(), Box<dyn error::Error>
     )?;
 
     loop {
-        let now = OffsetDateTime::now_local()?;
+        let now = OffsetDateTime::now_utc();
         let mut watering_date_time = now.replace_time(watering_time.clone());
         if watering_date_time <= now {
             watering_date_time += 1.days();
