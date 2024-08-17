@@ -88,7 +88,7 @@ impl Pin {
         Ok(())
     }
     fn is_enabled(&self) -> bool {
-        !self.handle.is_none()
+        self.handle.is_some()
     }
 }
 impl fmt::Display for Pin {
@@ -171,7 +171,7 @@ impl fmt::Display for Pump {
     }
 }
 
-fn run(pumps: &[Pump], watering_time: &Time) -> Result<(), Box<dyn error::Error>> {
+fn run(pumps: &[Pump], watering_time: Time) -> Result<(), Box<dyn error::Error>> {
     // Check date and time once per second.
     let sleep_duration = Duration::from_millis(1_000);
 
@@ -329,7 +329,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     }
 
     match args.command {
-        Command::Run => run(&pumps, &watering_time),
+        Command::Run => run(&pumps, watering_time),
         Command::Test(test_args) => test(&test_args, &pumps),
     }
 }
