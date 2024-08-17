@@ -33,6 +33,8 @@ use log::warn;
 use clap::Parser;
 use clap::Subcommand;
 
+use git_version::git_version;
+
 mod config;
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.toml";
@@ -307,6 +309,10 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         CombinedLogger::init(vec![file_logger])?;
     }
 
+    info!(
+        "water version {}",
+        git_version!(args = ["--abbrev=64", "--always", "--dirty=-modified"])
+    );
     info!("starting in {} mode", args.command.mode_name());
 
     let config_time_format = format_description::parse("[hour]:[minute]:[second]")?;
