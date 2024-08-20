@@ -175,6 +175,9 @@ fn run(pumps: &[Pump], watering_time: Time) -> Result<(), Box<dyn error::Error>>
     // Check date and time once per second.
     let sleep_duration = Duration::from_millis(1_000);
 
+    // Maximal error of a sleep duration before assuming a time jump.
+    let delta_t = Duration::from_millis(10_000);
+
     // Make a short pause between running successive pumps.
     let pause_duration = Duration::from_millis(1_000);
 
@@ -184,15 +187,25 @@ fn run(pumps: &[Pump], watering_time: Time) -> Result<(), Box<dyn error::Error>>
          [offset_hour sign:mandatory]:[offset_minute]",
     )?;
 
-    loop {
-        let now = OffsetDateTime::now_utc();
-        let mut watering_date_time = now.replace_time(watering_time.clone());
-        if watering_date_time <= now {
+    'outer: loop {
+        let mut t = OffsetDateTime::now_utc();
+        let mut watering_date_time = t.replace_time(watering_time);
+        if t >= watering_date_time {
             watering_date_time += 1.days();
         }
         info!("waiting for {}", watering_date_time.format(&format)?);
-        while OffsetDateTime::now_utc() < watering_date_time {
+        while t < watering_date_time {
             thread::sleep(sleep_duration);
+            let new_t = OffsetDateTime::now_utc();
+
+            // Error of sleep duration.
+            let e = new_t - (t + sleep_duration);
+
+            if e.abs() > delta_t {
+                info!("time jumped, restarting wait");
+                continue 'outer;
+            }
+            t = new_t;
         }
 
         info!(
