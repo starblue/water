@@ -1,8 +1,6 @@
 use core::fmt;
 use core::time::Duration;
 
-use std::error;
-use std::error::Error;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Read;
@@ -13,7 +11,7 @@ use time::format_description;
 use time::OffsetDateTime;
 use time::Time;
 
-use gpio_cdev::Chip;
+use gpio_cdev::Line;
 use gpio_cdev::LineHandle;
 use gpio_cdev::LineRequestFlags;
 
@@ -35,6 +33,9 @@ use clap::Subcommand;
 
 mod config;
 
+type Error = Box<dyn std::error::Error>;
+type Result<T> = std::result::Result<T, Error>;
+
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.toml";
 const DEFAULT_LOG_FILE_NAME: &str = "water.log";
 /// Run a pump test for one second by default.
@@ -46,19 +47,15 @@ const CONSUMER: &str = "water";
 struct Pin {
     /// The name of the pin.
     name: String,
-    /// Name of the device, typically `/dec/gpiochipN`.
-    device: String,
-    /// Pin offset within the device.
-    offset: u32,
+    /// The GPIO line to use.
+    line: Line,
     /// The handle for controlling the pin.
     handle: Option<LineHandle>,
 }
 impl Pin {
-    fn new(name: &str, enable: bool, device: &str, offset: u32) -> Result<Pin, gpio_cdev::Error> {
+    fn new(name: &str, line: Line, enable: bool) -> Result<Pin> {
         let handle = {
             if enable {
-                let mut chip = Chip::new(device)?;
-                let line = chip.get_line(offset)?;
                 Some(line.request(LineRequestFlags::OUTPUT, 0, CONSUMER)?)
             } else {
                 None
@@ -66,22 +63,21 @@ impl Pin {
         };
         Ok(Pin {
             name: name.to_string(),
-            device: device.to_string(),
-            offset,
+            line,
             handle,
         })
     }
-    fn set_value(&self, value: u8) -> Result<(), gpio_cdev::Error> {
+    fn set_value(&self, value: u8) -> Result<()> {
         debug!("setting pin {} to {}", self.name, value);
         self.set_value_raw(value)
     }
-    fn set_value_raw(&self, value: u8) -> Result<(), gpio_cdev::Error> {
+    fn set_value_raw(&self, value: u8) -> Result<()> {
         if let Some(handle) = &self.handle {
             handle.set_value(value)?;
         }
         Ok(())
     }
-    fn create_pulse(&self, duration: Duration) -> Result<(), gpio_cdev::Error> {
+    fn create_pulse(&self, duration: Duration) -> Result<()> {
         self.set_value(1)?;
         thread::sleep(duration);
         self.set_value(0)?;
@@ -92,11 +88,13 @@ impl Pin {
     }
 }
 impl fmt::Display for Pin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "pin {} at device {} with offset {}",
-            self.name, self.device, self.offset
+            self.name,
+            self.line.chip().path().to_string_lossy(),
+            self.line.offset()
         )
     }
 }
@@ -112,27 +110,19 @@ struct Pump {
     ml_per_day: f64,
 }
 impl Pump {
-    fn new(
-        name: &str,
-        enable: bool,
-        connector: &str,
-        device: &str,
-        offset: u32,
-        ml_per_s: f64,
-        ml_per_day: f64,
-    ) -> Result<Pump, Box<dyn error::Error>> {
+    fn new(name: &str, pin: Pin, ml_per_s: f64, ml_per_day: f64) -> Result<Pump> {
         Ok(Pump {
             name: name.to_string(),
-            pin: Pin::new(connector, enable, device, offset)?,
+            pin,
             ml_per_s,
             ml_per_day,
         })
     }
-    fn pump(&self, duration: Duration) -> Result<(), Box<dyn error::Error>> {
+    fn pump(&self, duration: Duration) -> Result<()> {
         self.pin.create_pulse(duration)?;
         Ok(())
     }
-    fn pump_for_secs(&self, secs: f64) -> Result<(), Box<dyn error::Error>> {
+    fn pump_for_secs(&self, secs: f64) -> Result<()> {
         let name = &self.name;
         if 0.0 <= secs && secs <= 30.0 {
             // TODO use checked conversion when stabilized
@@ -143,7 +133,7 @@ impl Pump {
         }
         Ok(())
     }
-    fn water(&self) -> Result<(), Box<dyn error::Error>> {
+    fn water(&self) -> Result<()> {
         let name = &self.name;
         let ml = self.ml_per_day;
         let ml_per_s = self.ml_per_s;
@@ -154,7 +144,7 @@ impl Pump {
     }
 }
 impl fmt::Display for Pump {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "pump {} ({}), {:.1} mL/day at {:.1} mL/s on {}",
@@ -171,7 +161,7 @@ impl fmt::Display for Pump {
     }
 }
 
-fn run(pumps: &[Pump], watering_time: Time) -> Result<(), Box<dyn error::Error>> {
+fn run(pumps: &[Pump], watering_time: Time) -> Result<()> {
     // Check date and time once per second.
     let sleep_duration = Duration::from_millis(1_000);
 
@@ -229,14 +219,14 @@ fn run(pumps: &[Pump], watering_time: Time) -> Result<(), Box<dyn error::Error>>
 struct PumpNotFoundError {
     pump_name: String,
 }
-impl Error for PumpNotFoundError {}
+impl std::error::Error for PumpNotFoundError {}
 impl fmt::Display for PumpNotFoundError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "pump with name {} not found", self.pump_name)
     }
 }
 
-fn test(test_args: &TestArgs, pumps: &[Pump]) -> Result<(), Box<dyn error::Error>> {
+fn test(test_args: &TestArgs, pumps: &[Pump]) -> Result<()> {
     let pump_name = &test_args.pump;
     if let Some(pump) = pumps.iter().find(|pump| &pump.name == pump_name) {
         let secs = test_args.secs.unwrap_or(DEFAULT_TEST_SECS);
@@ -262,6 +252,8 @@ struct Args {
     ///
     /// Default is `water.log` in the current directory.
     log_file: Option<String>,
+    #[clap(short, long)]
+    debug: bool,
     #[clap(subcommand)]
     command: Command,
 }
@@ -286,7 +278,29 @@ struct TestArgs {
     secs: Option<f64>,
 }
 
-fn main() -> Result<(), Box<dyn error::Error>> {
+fn find_gpio_line(name: &str) -> Result<Line> {
+    for chip in gpio_cdev::chips()? {
+        let mut chip = chip?;
+        for offset in 0..chip.num_lines() {
+            if let Ok(line) = chip.get_line(offset) {
+                let info = line.info()?;
+                if let Some(line_name) = info.name() {
+                    if line_name.starts_with(name) {
+                        return Ok(line);
+                    }
+                }
+            }
+        }
+    }
+    Err(format!("gpio line {} not found", name).into())
+}
+
+fn find_pin(name: &str, enable: bool) -> Result<Pin> {
+    let line = find_gpio_line(name)?;
+    Ok(Pin::new(name, line, enable)?)
+}
+
+fn main() -> Result<()> {
     let args = Args::parse();
 
     let config_file_name = args
@@ -307,7 +321,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         .set_time_format_str("%F %T%.3f")
         .set_thread_level(LevelFilter::Off)
         .build();
-    let file_logger = WriteLogger::new(LevelFilter::Info, log_config.clone(), log_file);
+    let level_filter = if args.debug {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
+    let file_logger = WriteLogger::new(level_filter, log_config.clone(), log_file);
     if cfg!(feature = "term_logger") {
         let term_logger = TermLogger::new(
             LevelFilter::Debug,
@@ -328,15 +347,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let mut pumps = Vec::new();
     for (name, pump_config) in config.pumps {
-        let pump = Pump::new(
-            &name,
-            pump_config.enable,
-            &pump_config.connector,
-            &pump_config.device,
-            pump_config.offset,
-            pump_config.ml_per_s,
-            pump_config.ml_per_day,
-        )?;
+        let pin = find_pin(&pump_config.pin_name, pump_config.enable)?;
+        let pump = Pump::new(&name, pin, pump_config.ml_per_s, pump_config.ml_per_day)?;
         info!("configured {pump}");
         pumps.push(pump);
     }

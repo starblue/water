@@ -27,12 +27,8 @@ impl Default for Timing {
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct Pump {
-    /// Name of the connector
-    pub connector: String,
-    /// Name of the device, typically `/dec/gpiochipN`.
-    pub device: String,
-    /// Pin offset within the device.
-    pub offset: u32,
+    /// Name of the pin.
+    pub pin_name: String,
     /// Amount of water pumped per second.
     pub ml_per_s: f64,
     /// Amount of water required per day.
